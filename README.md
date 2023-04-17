@@ -11,7 +11,7 @@ Environment:
 
 Note: Since it's an in memory database. Tables will not have data initially. Insert seed data via the post movies endpoint. Example listed below
 
-Endpoints and sample payloads:
+# Endpoints and sample payloads:
 
 db console endpoint: http://localhost:8080/h2-console
 
