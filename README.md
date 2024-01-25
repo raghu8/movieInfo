@@ -1,4 +1,12 @@
-﻿# Movie Information application
+INSERT INTO your_table (name, value, is_active, ignore_duringsynch, display_on_ui)
+VALUES ('example_name', 'example_value', 1, 0, 1)
+ON DUPLICATE KEY UPDATE 
+  is_active = VALUES(is_active), 
+  ignore_duringsynch = VALUES(ignore_duringsynch), 
+  display_on_ui = VALUES(display_on_ui);
+ 
+ 
+ # Movie Information application
 
 This is a spring boot application that performs CRUD operations on a movie database. This database has a movie that contains titile, release date, a list of actor and a separate table for actors.
 
