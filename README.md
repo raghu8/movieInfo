@@ -1,9 +1,8 @@
-INSERT INTO your_table (name, value, is_active, ignore_duringsynch, display_on_ui)
-VALUES ('example_name', 'example_value', 1, 0, 1)
-ON DUPLICATE KEY UPDATE 
-  is_active = VALUES(is_active), 
-  ignore_duringsynch = VALUES(ignore_duringsynch), 
-  display_on_ui = VALUES(display_on_ui);
+SELECT entity_id, MAX(created_at) AS max_created_at, MAX(reminderLocalDate) AS max_reminderLocalDate
+FROM activity
+WHERE entity_id IN (245747, 245447) AND entity_type = 'LEAD'
+GROUP BY entity_id
+ORDER BY IF(MAX(reminderLocalDate) IS NULL, MAX(created_at), MAX(reminderLocalDate));
  
  
  # Movie Information application
