@@ -1,8 +1,4 @@
-SELECT entity_id, MAX(created_at) AS max_created_at, MAX(reminderLocalDate) AS max_reminderLocalDate
-FROM activity
-WHERE entity_id IN (245747, 245447) AND entity_type = 'LEAD'
-GROUP BY entity_id
-ORDER BY IF(MAX(reminderLocalDate) IS NULL, MAX(created_at), MAX(reminderLocalDate));
+
  
  
  # Movie Information application
