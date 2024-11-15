@@ -1,96 +1,109 @@
-package com.fiserv.catalyst.sales.regime.config;
+The error indicates a mismatch in the `mappedBy` property between the `UserRole` and `SalesForceLead` entities. Specifically:
 
-import org.flywaydb.core.Flyway;
-import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
-import org.springframework.boot.context.properties.ConfigurationProperties;
-import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Primary;
-import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.orm.jpa.JpaTransactionManager;
-import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
-import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
-import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.transaction.annotation.EnableTransactionManagement;
+### Root Cause:
+The `salesForceLeads` field in the `UserRole` entity has this mapping:
+```java
+@OneToMany(cascade = CascadeType.ALL, mappedBy = "leadReferrer")
+List<SalesForceLead> salesForceLeads;
+```
+This suggests that the `SalesForceLead` entity has a field `leadReferrer` referencing the `UserRole` entity. However, the `SalesForceLead` entity is missing or incorrectly configured, and Hibernate expects the `leadReferrer` field in `SalesForceLead` to refer to `UserRole`.
 
-import jakarta.annotation.PostConstruct;
-import jakarta.persistence.EntityManagerFactory;
+---
 
-import javax.sql.DataSource;
-import java.util.HashMap;
-import java.util.Objects;
+### Solution:
 
-@Configuration
-@EnableTransactionManagement
-@EnableJpaRepositories(
-    basePackages = "com.fiserv.catalyst.sales.regime.repo", // Adjust package if incorrect
-    entityManagerFactoryRef = "catalystEntityManagerFactory",
-    transactionManagerRef = "catalystTransactionManager"
-)
-public class CatalystDatasourceConfiguration {
+1. **Verify `SalesForceLead` Entity:**
+   Ensure that the `SalesForceLead` entity exists and has a field `leadReferrer` mapped to `UserRole`. Example:
+   ```java
+   @Entity
+   @Table(name = "SalesForceLead")
+   public class SalesForceLead {
+       @Id
+       @GeneratedValue(strategy = GenerationType.IDENTITY)
+       @Column(name = "ID")
+       private Long id;
 
-    @Bean
-    @ConfigurationProperties("spring.datasource.catalyst")
-    public DataSourceProperties catalystDBSourceProperties() {
-        return new DataSourceProperties();
-    }
+       @ManyToOne
+       @JoinColumn(name = "LeadReferrer_ID", nullable = false)
+       private UserRole leadReferrer;
 
-    @Primary
-    @Bean
-    @ConfigurationProperties("spring.datasource.catalyst.hikari")
-    public DataSource catalystDataSource() {
-        return catalystDBSourceProperties()
-                .initializeDataSourceBuilder()
-                .build();
-    }
+       // Other fields...
+   }
+   ```
 
-    @Bean
-    @ConfigurationProperties("spring.datasource.todos.hikari")
-    public DataSource todosDataSource() {
-        return catalystDBSourceProperties()
-                .initializeDataSourceBuilder()
-                .build();
-    }
+2. **Correct `mappedBy` Attribute:**
+   Confirm that `mappedBy = "leadReferrer"` in `UserRole` matches the field name in `SalesForceLead`. If the field in `SalesForceLead` is named differently, update `mappedBy` accordingly.
 
-    @Primary
-    @Bean
-    public JdbcTemplate catalystJdbcTemplate() {
-        return new JdbcTemplate(catalystDataSource());
-    }
+3. **Validate the Database Schema:**
+   Ensure the database schema matches the mapping, particularly:
+   - `SalesForceLead` table has a foreign key column pointing to the `Roles` table (`UserRole`).
 
-    @Primary
-    @Bean
-    public EntityManagerFactoryBuilder entityManagerFactoryBuilder() {
-        return new EntityManagerFactoryBuilder(new HibernateJpaVendorAdapter(), new HashMap<>(), null);
-    }
+4. **Update the `CatalystDatasourceConfiguration`:**
+   The issue lies in the configuration of the `EntityManagerFactory`. Ensure the entity package is correctly scanned:
+   ```java
+   @Primary
+   @Bean
+   public LocalContainerEntityManagerFactoryBean catalystEntityManagerFactory(
+           EntityManagerFactoryBuilder builder) {
+       return builder
+               .dataSource(catalystDataSource())
+               .packages("com.fiserv.catalyst.sales.regime.entity") // Ensure all entities are included
+               .persistenceUnit("catalystPU")
+               .build();
+   }
+   ```
 
-    @Primary
-    @Bean
-    public LocalContainerEntityManagerFactoryBean catalystEntityManagerFactory(
-            EntityManagerFactoryBuilder builder) {
-        return builder
-                .dataSource(catalystDataSource())
-                .packages("com.fiserv.catalyst.sales.regime.entity") // Ensure this package contains all JPA entities
-                .persistenceUnit("catalystPU") // Added persistence unit name
-                .build();
-    }
+5. **Enable Hibernate Validation Logging (Optional):**
+   Add Hibernate logging to debug issues further:
+   ```properties
+   spring.jpa.show-sql=true
+   spring.jpa.properties.hibernate.format_sql=true
+   logging.level.org.hibernate=DEBUG
+   ```
 
-    @Primary
-    @Bean
-    public PlatformTransactionManager catalystTransactionManager(
-            LocalContainerEntityManagerFactoryBean catalystEntityManagerFactory) {
-        return new JpaTransactionManager(
-                Objects.requireNonNull(catalystEntityManagerFactory.getObject()));
-    }
+---
 
-    @PostConstruct
-    public void migrateFlyway() {
-        Flyway flywayIntegration = Flyway.configure()
-                .dataSource(catalystDataSource())
-                .locations("classpath:db/migration") // Ensure migration scripts are in the correct location
-                .load();
-        flywayIntegration.migrate();
-    }
+### Example Updated Entities:
+
+#### `UserRole`
+```java
+@Entity
+@Table(name = "Roles")
+public class UserRole {
+    @Id
+    @Column(name = "ID")
+    private Long id;
+
+    @OneToMany(cascade = CascadeType.ALL, mappedBy = "leadReferrer", orphanRemoval = true)
+    private List<SalesForceLead> salesForceLeads;
+
+    // Other fields...
 }
+```
+
+#### `SalesForceLead`
+```java
+@Entity
+@Table(name = "SalesForceLead")
+public class SalesForceLead {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "ID")
+    private Long id;
+
+    @ManyToOne
+    @JoinColumn(name = "LeadReferrer_ID", nullable = false)
+    private UserRole leadReferrer;
+
+    // Other fields...
+}
+```
+
+---
+
+### Steps After Changes:
+1. **Rebuild the Project**: Clean and rebuild your project to ensure all mappings are updated.
+2. **Validate Migrations**: If using Flyway or other migration tools, ensure the schema matches the updated entities.
+3. **Test the Application**: Run the application and verify the changes resolve the issue.
+
+Let me know if the issue persists or if you need further assistance!
