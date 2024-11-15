@@ -1,90 +1,96 @@
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.secretsmanager.SecretsManagerClient;
-import software.amazon.awssdk.services.secretsmanager.model.DecryptionFailureException;
-import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueRequest;
-import software.amazon.awssdk.services.secretsmanager.model.GetSecretValueResponse;
-import software.amazon.awssdk.services.secretsmanager.model.InternalServiceErrorException;
-import software.amazon.awssdk.services.secretsmanager.model.InvalidParameterException;
-import software.amazon.awssdk.services.secretsmanager.model.InvalidRequestException;
-import software.amazon.awssdk.services.secretsmanager.model.ResourceNotFoundException;
-import java.util.Base64;
+package com.fiserv.catalyst.sales.regime.config;
 
-public class SecretsManagerService {
+import org.flywaydb.core.Flyway;
+import org.springframework.boot.autoconfigure.jdbc.DataSourceProperties;
+import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 
-    private static final String awsRegionStatic = "us-west-2"; // Replace with your region
-    private static final String awsSecretNameStatic = "your-secret-name"; // Replace with your secret name
+import jakarta.annotation.PostConstruct;
+import jakarta.persistence.EntityManagerFactory;
 
-    public static JsonNode retrieveSecrets(String versionId) {
+import javax.sql.DataSource;
+import java.util.HashMap;
+import java.util.Objects;
 
-        JsonNode secretsJsonMap = null;
-        GetSecretValueRequest getSecretValueRequest;
-        GetSecretValueResponse getSecretValueResponse;
-        String secretsStr = null;
+@Configuration
+@EnableTransactionManagement
+@EnableJpaRepositories(
+    basePackages = "com.fiserv.catalyst.sales.regime.repo", // Adjust package if incorrect
+    entityManagerFactoryRef = "catalystEntityManagerFactory",
+    transactionManagerRef = "catalystTransactionManager"
+)
+public class CatalystDatasourceConfiguration {
 
-        // 1. Create Secrets Manager client
-        SecretsManagerClient client = SecretsManagerClient.builder()
-                .region(Region.of(awsRegionStatic))
+    @Bean
+    @ConfigurationProperties("spring.datasource.catalyst")
+    public DataSourceProperties catalystDBSourceProperties() {
+        return new DataSourceProperties();
+    }
+
+    @Primary
+    @Bean
+    @ConfigurationProperties("spring.datasource.catalyst.hikari")
+    public DataSource catalystDataSource() {
+        return catalystDBSourceProperties()
+                .initializeDataSourceBuilder()
                 .build();
+    }
 
-        // 2. Build request
-        if (versionId != null && !versionId.isEmpty()) {
-            getSecretValueRequest = GetSecretValueRequest.builder()
-                    .secretId(awsSecretNameStatic)
-                    .versionId(versionId)
-                    .build();
-        } else {
-            // Get current version
-            getSecretValueRequest = GetSecretValueRequest.builder()
-                    .secretId(awsSecretNameStatic)
-                    .build();
-        }
+    @Bean
+    @ConfigurationProperties("spring.datasource.todos.hikari")
+    public DataSource todosDataSource() {
+        return catalystDBSourceProperties()
+                .initializeDataSourceBuilder()
+                .build();
+    }
 
-        // 3. Invoke and handle potential exceptions
-        try {
-            getSecretValueResponse = client.getSecretValue(getSecretValueRequest);
+    @Primary
+    @Bean
+    public JdbcTemplate catalystJdbcTemplate() {
+        return new JdbcTemplate(catalystDataSource());
+    }
 
-            // 4. Process Results
-            if (getSecretValueResponse.secretString() != null) {
-                secretsStr = getSecretValueResponse.secretString();
-            } else {
-                // Decrypts binary secret using the associated KMS key.
-                secretsStr = new String(Base64.getDecoder().decode(getSecretValueResponse.secretBinary().asByteArray()));
-            }
+    @Primary
+    @Bean
+    public EntityManagerFactoryBuilder entityManagerFactoryBuilder() {
+        return new EntityManagerFactoryBuilder(new HibernateJpaVendorAdapter(), new HashMap<>(), null);
+    }
 
-            ObjectMapper objectMapper = new ObjectMapper();
-            if (secretsStr != null && !secretsStr.isEmpty()) {
-                secretsJsonMap = objectMapper.readTree(secretsStr);
+    @Primary
+    @Bean
+    public LocalContainerEntityManagerFactoryBean catalystEntityManagerFactory(
+            EntityManagerFactoryBuilder builder) {
+        return builder
+                .dataSource(catalystDataSource())
+                .packages("com.fiserv.catalyst.sales.regime.entity") // Ensure this package contains all JPA entities
+                .persistenceUnit("catalystPU") // Added persistence unit name
+                .build();
+    }
 
-                String outVersionId = getSecretValueResponse.versionId();
-                if (outVersionId != null && !outVersionId.isEmpty()) {
-                    ((ObjectNode) secretsJsonMap).put("versionId", outVersionId);
-                }
-            } else {
-                System.err.println("The Secret String returned is null");
-            }
+    @Primary
+    @Bean
+    public PlatformTransactionManager catalystTransactionManager(
+            LocalContainerEntityManagerFactoryBean catalystEntityManagerFactory) {
+        return new JpaTransactionManager(
+                Objects.requireNonNull(catalystEntityManagerFactory.getObject()));
+    }
 
-        } catch (DecryptionFailureException e) {
-            // Secrets Manager can't decrypt the protected secret text using the provided KMS key.
-            throw new RuntimeException("Decryption failure", e);
-        } catch (InternalServiceErrorException e) {
-            // An error occurred on the server side.
-            throw new RuntimeException("Internal service error", e);
-        } catch (InvalidParameterException e) {
-            // You provided an invalid value for a parameter.
-            throw new RuntimeException("Invalid parameter", e);
-        } catch (InvalidRequestException e) {
-            // You provided a parameter value that is not valid for the current state of the resource.
-            throw new RuntimeException("Invalid request", e);
-        } catch (ResourceNotFoundException e) {
-            // We can't find the resource that you asked for.
-            throw new RuntimeException("Resource not found", e);
-        } catch (Exception ex) {
-            System.err.println("Exception while retrieving secret values from AWS: " + ex.getMessage());
-        }
-
-        return secretsJsonMap;
+    @PostConstruct
+    public void migrateFlyway() {
+        Flyway flywayIntegration = Flyway.configure()
+                .dataSource(catalystDataSource())
+                .locations("classpath:db/migration") // Ensure migration scripts are in the correct location
+                .load();
+        flywayIntegration.migrate();
     }
 }
