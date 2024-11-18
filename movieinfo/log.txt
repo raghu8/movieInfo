@@ -41,12 +41,9 @@ return scheduler;
 }
 }
 
-my error is 
+my error is below. my RestTemplateConfig is above 
 
-Gmail	RV M <rvmanthena@gmail.com>
-(no subject)
-Manthena, Raghu (Alpharetta) <raghu.manthena@fiserv.com>	Sun, Nov 17, 2024 at 7:52 PM
-To: RV M <rvmanthena@gmail.com>
+
 org.hibernate.exception.JDBCConnectionException: unable to obtain isolated JDBC connection [User access disabled. Contact your local system administrator.] [n/a]
 
                 at org.hibernate.exception.internal.SQLStateConversionDelegate.convert(SQLStateConversionDelegate.java:100) ~[hibernate-core-6.5.3.Final.jar:6.5.3.Final]
